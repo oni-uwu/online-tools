@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PNG → SVG Tracer</title>
+  <title>PNG → SVG Tracer (Fixed 2026)</title>
   <style>
     body {
       font-family: system-ui, sans-serif;
@@ -26,12 +26,13 @@
       border-radius: 12px;
       border: 1px solid #333366;
     }
-    canvas, svg {
+    canvas, svg, #svgContainer {
       max-width: 100%;
       height: auto;
       background: #00000022;
       border: 1px solid #444;
       border-radius: 6px;
+      min-height: 200px;
     }
     .controls {
       display: flex;
@@ -48,168 +49,189 @@
       cursor: pointer;
       font-size: 1rem;
     }
-    button:hover { background: #818cf8; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button:hover:not(:disabled) { background: #818cf8; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; background: #444; }
     label { display: block; margin: 12px 0 4px; }
     input[type=range] { width: 180px; }
-    .info { font-size: 0.9rem; color: #aaa; }
+    .info, .status { font-size: 0.9rem; color: #aaa; }
+    .status.error { color: #f66; }
+    .status.success { color: #6f6; }
   </style>
 </head>
 <body>
 
-<h1>PNG → SVG (browser tracing)</h1>
+<h1>PNG → SVG Tracer (improved & debugged)</h1>
 
 <div class="container">
   <div class="panel">
-    <h2>1. Load PNG</h2>
-    <input type="file" id="fileInput" accept="image/png,image/jpeg" />
-    <p class="info">Best results with clean logos, icons, line art, silhouettes (black & white works best)</p>
+    <h2>1. Load Image</h2>
+    <input type="file" id="fileInput" accept="image/png,image/jpeg,image/bmp" />
+    <p class="info">Best: high-contrast logos, icons, line art, black shapes on white. Avoid photos unless very clean.</p>
 
-    <h3>Preview</h3>
+    <h3>Preview (resized to fit)</h3>
     <canvas id="canvas" width="500" height="500"></canvas>
   </div>
 
   <div class="panel">
-    <h2>2. Trace → SVG</h2>
+    <h2>2. Trace Settings & Result</h2>
 
     <div class="controls">
       <button id="traceBtn" disabled>Convert to SVG</button>
       <button id="downloadBtn" disabled>Download SVG</button>
     </div>
 
-    <label>Threshold (0–255): <span id="threshVal">128</span></label>
-    <input type="range" id="threshold" min="0" max="255" value="128" step="1" />
+    <div id="status" class="status"></div>
 
-    <label>Blur (smoothing): <span id="blurVal">1.5</span> px</label>
-    <input type="range" id="blur" min="0" max="5" value="1.5" step="0.1" />
+    <label>Threshold (lower = more black): <span id="threshVal">90</span></label>
+    <input type="range" id="threshold" min="10" max="240" value="90" step="5" />
 
-    <label>Min path length: <span id="lenVal">8</span> px</label>
-    <input type="range" id="minLength" min="2" max="30" value="8" step="1" />
+    <label>Blur (noise reduction): <span id="blurVal">2.0</span> px</label>
+    <input type="range" id="blur" min="0" max="6" value="2.0" step="0.5" />
 
-    <label>Turn policy: <select id="turnPolicy">
-      <option value="black">black (default – good for most cases)</option>
-      <option value="white">white</option>
-      <option value="left">left</option>
-      <option value="right">right</option>
-      <option value="majority">majority</option>
-      <option value="minority">minority</option>
-    </select></label>
+    <label>Min path length (ignore tiny bits): <span id="lenVal">5</span> px</label>
+    <input type="range" id="minLength" min="2" max="40" value="5" step="1" />
 
-    <h3>Result SVG</h3>
-    <div id="svgContainer"></div>
+    <label>Turn policy:
+      <select id="turnPolicy">
+        <option value="black">black (default)</option>
+        <option value="white">white</option>
+        <option value="left">left</option>
+        <option value="right">right</option>
+        <option value="majority">majority</option>
+        <option value="minority">minority</option>
+      </select>
+    </label>
+
+    <h3>Result (SVG preview)</h3>
+    <div id="svgContainer">Nothing yet — load image & convert</div>
   </div>
 </div>
 
-<script src="https://unpkg.com/potrace@2.1.8/dist/potrace-browser.min.js"></script>
+<!-- More reliable modern ESM/WASM friendly build via jsDelivr -->
+<script type="module">
+  import { potrace, init as initPotrace } from 'https://cdn.jsdelivr.net/npm/esm-potrace-wasm@latest/+esm';
 
-<script>
-// ────────────────────────────────────────────────
-const fileInput   = document.getElementById('fileInput');
-const canvas      = document.getElementById('canvas');
-const ctx         = canvas.getContext('2d');
-const traceBtn    = document.getElementById('traceBtn');
-const downloadBtn = document.getElementById('downloadBtn');
-const svgContainer = document.getElementById('svgContainer');
-
-let originalImage = null;
-
-// UI elements
-const threshSlider = document.getElementById('threshold');
-const threshVal    = document.getElementById('threshVal');
-const blurSlider   = document.getElementById('blur');
-const blurVal      = document.getElementById('blurVal');
-const lenSlider    = document.getElementById('minLength');
-const lenVal       = document.getElementById('lenVal');
-
-threshSlider.oninput = () => threshVal.textContent = threshSlider.value;
-blurSlider.oninput   = () => blurVal.textContent   = blurSlider.value;
-lenSlider.oninput    = () => lenVal.textContent    = lenSlider.value;
-
-// ────────────────────────────────────────────────
-fileInput.onchange = e => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = ev => {
-    const img = new Image();
-    img.onload = () => {
-      originalImage = img;
-
-      // fit to canvas
-      const max = 500;
-      let w = img.width, h = img.height;
-      if (w > h) {
-        if (w > max) { h *= max/w; w = max; }
-      } else {
-        if (h > max) { w *= max/h; h = max; }
-      }
-
-      canvas.width = w;
-      canvas.height = h;
-      ctx.drawImage(img, 0, 0, w, h);
-
-      traceBtn.disabled = false;
-      downloadBtn.disabled = true;
-      svgContainer.innerHTML = '';
-    };
-    img.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
-};
-
-// ────────────────────────────────────────────────
-traceBtn.onclick = () => {
-  if (!originalImage) return;
-
-  // 1. Draw image again (in case canvas was resized etc)
-  ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
-
-  // 2. Optional: slight blur → better tracing
-  const blur = parseFloat(blurSlider.value);
-  if (blur > 0) {
-    ctx.filter = `blur(${blur}px)`;
-    ctx.drawImage(canvas, 0, 0);
-    ctx.filter = 'none';
+  // Wait for WASM to initialize (important!)
+  const status = document.getElementById('status');
+  status.textContent = 'Loading Potrace WASM...';
+  try {
+    await initPotrace();
+    status.textContent = 'Potrace ready ✓';
+    status.className = 'status success';
+  } catch (e) {
+    status.textContent = 'Failed to load Potrace: ' + e.message;
+    status.className = 'status error';
+    console.error(e);
   }
 
-  // 3. Get image data
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const fileInput    = document.getElementById('fileInput');
+  const canvas       = document.getElementById('canvas');
+  const ctx          = canvas.getContext('2d');
+  const traceBtn     = document.getElementById('traceBtn');
+  const downloadBtn  = document.getElementById('downloadBtn');
+  const svgContainer = document.getElementById('svgContainer');
 
-  // 4. Trace!
-  const traceOptions = {
-    turnpolicy:     document.getElementById('turnPolicy').value,
-    turdsize:       parseInt(lenSlider.value),
-    alphamax:       1.0,           // 0 = no smoothing, 1 = good smoothing, 1.3334 = max
-    opticurve:      true,
-    opttolerance:   0.2,
-    threshold:      parseInt(threshSlider.value) / 255,
-    blackonwhite:   true           // most common for logos
+  let originalImage = null;
+
+  // UI value displays
+  document.getElementById('threshold').oninput = e => document.getElementById('threshVal').textContent = e.target.value;
+  document.getElementById('blur').oninput     = e => document.getElementById('blurVal').textContent   = e.target.value;
+  document.getElementById('minLength').oninput = e => document.getElementById('lenVal').textContent   = e.target.value;
+
+  fileInput.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    status.textContent = 'Image loaded — ready to trace';
+    status.className = 'status';
+
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        originalImage = img;
+
+        // Resize to reasonable size for tracing speed & quality
+        let w = img.width, h = img.height;
+        const max = 800;
+        if (w > max || h > max) {
+          if (w > h) { h = Math.round(max * h / w); w = max; }
+          else       { w = Math.round(max * w / h); h = max; }
+        }
+
+        canvas.width = w; canvas.height = h;
+        ctx.drawImage(img, 0, 0, w, h);
+
+        traceBtn.disabled = false;
+        downloadBtn.disabled = true;
+        svgContainer.innerHTML = 'Ready — click Convert';
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
   };
 
-  potrace.trace(imageData, traceOptions, (err, svg) => {
-    if (err) {
-      alert("Tracing failed: " + err);
-      return;
+  traceBtn.onclick = async () => {
+    if (!originalImage) return;
+
+    status.textContent = 'Tracing... (may take a few seconds)';
+    status.className = 'status';
+
+    // Re-draw fresh
+    ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
+
+    // Apply blur if requested
+    const blurPx = parseFloat(document.getElementById('blur').value);
+    if (blurPx > 0) {
+      ctx.filter = `blur(${blurPx}px)`;
+      ctx.drawImage(canvas, 0, 0);
+      ctx.filter = 'none';
     }
 
-    svgContainer.innerHTML = svg;
-    downloadBtn.disabled = false;
-    downloadBtn.onclick = () => downloadSVG(svg);
-  });
-};
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-function downloadSVG(svgString) {
-  const blob = new Blob([svgString], {type: 'image/svg+xml'});
-  const url = URL.createObjectURL(blob);
+    try {
+      const params = {
+        turnpolicy: document.getElementById('turnPolicy').value,
+        turdsize: parseInt(document.getElementById('minLength').value),
+        alphamax: 1.0,
+        opticurve: true,
+        opttolerance: 0.2,
+        threshold: parseInt(document.getElementById('threshold').value) / 255,
+        blackonwhite: true,
+      };
 
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'traced-image.svg';
-  a.click();
+      console.log('Tracing with params:', params);
 
-  URL.revokeObjectURL(url);
-}
+      const svg = await potrace(imageData, params);
+
+      console.log('SVG length:', svg?.length || 0);
+
+      if (!svg || svg.length < 200) {
+        throw new Error('No meaningful paths found (empty/near-empty SVG)');
+      }
+
+      svgContainer.innerHTML = svg;
+      downloadBtn.disabled = false;
+      downloadBtn.onclick = () => {
+        const blob = new Blob([svg], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'traced.svg';
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+
+      status.textContent = 'Tracing complete ✓';
+      status.className = 'status success';
+    } catch (err) {
+      console.error(err);
+      status.textContent = 'Error: ' + (err.message || 'Tracing failed');
+      status.className = 'status error';
+      svgContainer.innerHTML = '<p style="color:#f66">Failed — see status above. Try different threshold / cleaner image.</p>';
+    }
+  };
 </script>
 
 </body>

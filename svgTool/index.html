@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PNG → SVG Tracer (2026 - More Controls)</title>
+  <title>PNG → SVG Tracer (2026 - Preprocessing Controls)</title>
   <style>
     body { font-family: system-ui, sans-serif; background: #0f0f15; color: #e0e0ff; padding: 20px; max-width: 1100px; margin: 0 auto; }
     h1 { color: #a5b4fc; }
@@ -25,20 +25,20 @@
 </head>
 <body>
 
-<h1>PNG → SVG Tracer (more parameters)</h1>
+<h1>PNG → SVG Tracer (with brightness & contrast)</h1>
 
 <div class="container">
   <div class="panel">
     <h2>1. Load Image</h2>
     <input type="file" id="fileInput" accept="image/png,image/jpeg,image/bmp" />
-    <p class="info">Best: high-contrast logos, icons, line art.<br>Photos usually need heavy posterization (not supported yet).</p>
+    <p class="info">Best for high-contrast logos, icons, line art.<br>Use brightness/contrast to improve separation before tracing.</p>
 
-    <h3>Preview</h3>
+    <h3>Preview (after adjustments)</h3>
     <canvas id="canvas" width="500" height="500"></canvas>
   </div>
 
   <div class="panel">
-    <h2>2. Trace Settings</h2>
+    <h2>2. Trace Settings & Preprocessing</h2>
 
     <div class="controls">
       <button id="traceBtn" disabled>Convert to SVG</button>
@@ -52,21 +52,27 @@
     <label>Threshold: <span id="threshVal">90</span></label>
     <input type="range" id="threshold" min="10" max="240" value="90" step="5" />
 
-    <label>Blur (px): <span id="blurVal">2.0</span></label>
-    <input type="range" id="blur" min="0" max="8" value="2.0" step="0.5" />
+    <label>Blur (px): <span id="blurVal">1.5</span></label>
+    <input type="range" id="blur" min="0" max="8" value="1.5" step="0.5" />
 
-    <label>Min path length (px): <span id="lenVal">4</span></label>
-    <input type="range" id="minLength" min="1" max="40" value="4" step="1" />
+    <label>Brightness (%): <span id="brightVal">100</span></label>
+    <input type="range" id="brightness" min="20" max="200" value="100" step="5" />
+
+    <label>Contrast (%): <span id="contrastVal">120</span></label>
+    <input type="range" id="contrast" min="50" max="300" value="120" step="10" />
+
+    <label>Min path length (px): <span id="lenVal">3</span></label>
+    <input type="range" id="minLength" min="1" max="40" value="3" step="1" />
 
     <label>Corner sharpness: <span id="alphaVal">0.00</span> (0 = sharp)</label>
     <input type="range" id="alphamax" min="0" max="1.333" value="0.0" step="0.05" />
 
-    <label>Curve tolerance: <span id="tolVal">0.10</span> (lower = more detail)</label>
-    <input type="range" id="opttolerance" min="0.01" max="2" value="0.1" step="0.05" />
+    <label>Curve tolerance: <span id="tolVal">0.08</span> (lower = more detail)</label>
+    <input type="range" id="opttolerance" min="0.01" max="2" value="0.08" step="0.02" />
 
     <label><input type="checkbox" id="opticurve" checked /> Fit smooth curves (uncheck = max detail / polygons)</label>
 
-    <label><input type="checkbox" id="blackonwhite" checked /> Black is foreground (uncheck for white-on-black art)</label>
+    <label><input type="checkbox" id="blackonwhite" checked /> Black is foreground (uncheck for white-on-black)</label>
 
     <label>Turn policy:
       <select id="turnPolicy">
@@ -79,7 +85,7 @@
       </select>
     </label>
 
-    <h3>Result</h3>
+    <h3>Result (SVG preview)</h3>
     <div id="svgContainer">Load image & convert…</div>
   </div>
 </div>
@@ -108,20 +114,28 @@
 
   let originalImage = null;
 
-  // Value displays
+  // Live value displays
   const displays = {
     threshold:   document.getElementById('threshVal'),
     blur:        document.getElementById('blurVal'),
+    brightness:  document.getElementById('brightVal'),
+    contrast:    document.getElementById('contrastVal'),
     minLength:   document.getElementById('lenVal'),
     alphamax:    document.getElementById('alphaVal'),
     opttolerance: document.getElementById('tolVal')
   };
+
   Object.keys(displays).forEach(key => {
-    const el = document.getElementById(key);
-    if (el) el.oninput = e => displays[key].textContent = Number(e.target.value).toFixed(key === 'alphamax' || key === 'opttolerance' ? 2 : 0);
+    const slider = document.getElementById(key);
+    if (slider) {
+      slider.oninput = e => {
+        const val = e.target.value;
+        displays[key].textContent = (key === 'alphamax' || key === 'opttolerance') ? Number(val).toFixed(2) : val;
+      };
+    }
   });
 
-  // Presets
+  // Presets (updated with brightness/contrast)
   document.getElementById('presetSharp').onclick = () => applyPreset('sharp');
   document.getElementById('presetSmooth').onclick = () => applyPreset('smooth');
 
@@ -129,6 +143,8 @@
     if (type === 'sharp') {
       document.getElementById('threshold').value = 100;
       document.getElementById('blur').value = 1.0;
+      document.getElementById('brightness').value = 110;
+      document.getElementById('contrast').value = 140;
       document.getElementById('minLength').value = 2;
       document.getElementById('alphamax').value = 0.0;
       document.getElementById('opttolerance').value = 0.05;
@@ -137,14 +153,19 @@
     } else { // smooth
       document.getElementById('threshold').value = 80;
       document.getElementById('blur').value = 2.5;
+      document.getElementById('brightness').value = 90;
+      document.getElementById('contrast').value = 110;
       document.getElementById('minLength').value = 8;
       document.getElementById('alphamax').value = 1.0;
       document.getElementById('opttolerance').value = 0.2;
       document.getElementById('opticurve').checked = true;
       document.getElementById('turnPolicy').value = 'majority';
     }
-    // Trigger display update
-    Object.values(displays).forEach(d => d.textContent = Number(document.getElementById(d.parentElement.previousElementSibling?.id || d.id.replace('Val','')).value).toFixed(2));
+    // Update displayed values
+    Object.keys(displays).forEach(k => {
+      const v = document.getElementById(k)?.value ?? '—';
+      displays[k].textContent = (k === 'alphamax' || k === 'opttolerance') ? Number(v).toFixed(2) : v;
+    });
   }
 
   fileInput.onchange = e => {
@@ -165,26 +186,62 @@
           else { w = Math.round(maxDim * w / h); h = maxDim; }
         }
         canvas.width = w; canvas.height = h;
-        ctx.drawImage(img, 0, 0, w, h);
+        redrawPreview(); // initial draw with defaults
         traceBtn.disabled = false;
         downloadBtn.disabled = true;
-        svgContainer.innerHTML = 'Ready — press Convert';
+        svgContainer.innerHTML = 'Ready — adjust settings & press Convert';
       };
       img.src = ev.target.result;
     };
     reader.readAsDataURL(file);
   };
 
-  traceBtn.onclick = async () => {
+  // Helper to redraw preview with current adjustments (optional visual feedback)
+  function redrawPreview() {
     if (!originalImage) return;
-    status.textContent = 'Tracing…';
-    status.className = 'status';
-
     ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
 
-    const blurPx = parseFloat(document.getElementById('blur').value);
-    if (blurPx > 0) {
-      ctx.filter = `blur(${blurPx}px)`;
+    const blurPx     = parseFloat(document.getElementById('blur').value);
+    const brightPct  = parseFloat(document.getElementById('brightness').value);
+    const contrastPct = parseFloat(document.getElementById('contrast').value);
+
+    let filterStr = '';
+    if (blurPx > 0)     filterStr += `blur(${blurPx}px) `;
+    if (brightPct !== 100)  filterStr += `brightness(${brightPct}%) `;
+    if (contrastPct !== 100) filterStr += `contrast(${contrastPct}%) `;
+
+    if (filterStr) {
+      ctx.filter = filterStr.trim();
+      ctx.drawImage(canvas, 0, 0);
+      ctx.filter = 'none';
+    }
+  }
+
+  // Attach redraw to sliders so user sees changes live
+  ['blur', 'brightness', 'contrast'].forEach(id => {
+    document.getElementById(id).oninput = () => redrawPreview();
+  });
+
+  traceBtn.onclick = async () => {
+    if (!originalImage) return;
+    status.textContent = 'Preprocessing & tracing…';
+    status.className = 'status';
+
+    // Start from original
+    ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
+
+    // Apply all filters in sequence
+    const blurPx      = parseFloat(document.getElementById('blur').value);
+    const brightPct   = parseFloat(document.getElementById('brightness').value);
+    const contrastPct = parseFloat(document.getElementById('contrast').value);
+
+    let filterStr = '';
+    if (blurPx > 0)     filterStr += `blur(${blurPx}px) `;
+    if (brightPct !== 100)  filterStr += `brightness(${brightPct}%) `;
+    if (contrastPct !== 100) filterStr += `contrast(${contrastPct}%) `;
+
+    if (filterStr) {
+      ctx.filter = filterStr.trim();
       ctx.drawImage(canvas, 0, 0);
       ctx.filter = 'none';
     }
@@ -202,11 +259,11 @@
         blackonwhite: document.getElementById('blackonwhite').checked,
       };
 
-      console.log('Params:', params);
+      console.log('Tracing params:', params);
 
       const svg = await potrace(imageData, params);
 
-      if (!svg || svg.length < 300) throw new Error('Empty result – try different threshold');
+      if (!svg || svg.length < 300) throw new Error('Empty/weak result – try higher contrast or different threshold');
 
       svgContainer.innerHTML = svg;
 
@@ -228,7 +285,7 @@
       console.error(err);
       status.textContent = 'Error: ' + (err.message || 'Failed');
       status.className = 'status error';
-      svgContainer.innerHTML = '<p style="color:#f66">Failed. Try adjusting threshold, blur, or turn policy.</p>';
+      svgContainer.innerHTML = '<p style="color:#f66">Failed. Try more contrast, higher threshold, or less blur.</p>';
     }
   };
 </script>

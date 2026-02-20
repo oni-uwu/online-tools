@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PNG → SVG Tracer (2026 - Saturation & Max Colors)</title>
+  <title>PNG → SVG Tracer (2026 - Fixed Foreground)</title>
   <style>
     body { font-family: system-ui, sans-serif; background: #0f0f15; color: #e0e0ff; padding: 20px; max-width: 1100px; margin: 0 auto; }
     h1 { color: #a5b4fc; }
@@ -26,13 +26,13 @@
 </head>
 <body>
 
-<h1>PNG → SVG Tracer (with saturation & max colors placeholder)</h1>
+<h1>PNG → SVG Tracer (fixed white foreground support)</h1>
 
 <div class="container">
   <div class="panel">
     <h2>1. Load Image</h2>
     <input type="file" id="fileInput" accept="image/png,image/jpeg,image/bmp" />
-    <p class="info">Best for logos, icons, line art.<br>Use saturation to tone down colors or make grayscale before tracing.</p>
+    <p class="info">Best for high-contrast logos, icons, line art.<br>Uncheck “Black foreground” when your image has white shapes on black background.</p>
 
     <h3>Preview (live adjustments)</h3>
     <canvas id="canvas" width="500" height="500"></canvas>
@@ -65,7 +65,7 @@
     <label>Saturation (%): <span id="satVal">80</span> (0 = grayscale)</label>
     <input type="range" id="saturation" min="0" max="200" value="80" step="5" />
 
-    <label>Max colors (placeholder): <span id="maxcolVal">256</span> (not yet supported by library)</label>
+    <label>Max colors (placeholder): <span id="maxcolVal">256</span></label>
     <input type="range" id="maxColors" min="2" max="32" value="256" step="1" />
 
     <label>Min path length (px): <span id="lenVal">3</span></label>
@@ -79,7 +79,11 @@
 
     <label><input type="checkbox" id="opticurve" checked /> Fit smooth curves (uncheck = polygons / max detail)</label>
 
-    <label><input type="checkbox" id="blackonwhite" checked /> Black is foreground</label>
+    <label>
+      <input type="checkbox" id="blackonwhite" checked />
+      Black foreground / white background
+      <small>(uncheck = white foreground / black background)</small>
+    </label>
 
     <label>Turn policy:
       <select id="turnPolicy">
@@ -121,16 +125,16 @@
 
   let originalImage = null;
 
-  // Live displays
+  // Live value displays
   const displays = {
-    threshold:   document.getElementById('threshVal'),
-    blur:        document.getElementById('blurVal'),
-    brightness:  document.getElementById('brightVal'),
-    contrast:    document.getElementById('contrastVal'),
-    saturation:  document.getElementById('satVal'),
-    maxColors:   document.getElementById('maxcolVal'),
-    minLength:   document.getElementById('lenVal'),
-    alphamax:    document.getElementById('alphaVal'),
+    threshold:    document.getElementById('threshVal'),
+    blur:         document.getElementById('blurVal'),
+    brightness:   document.getElementById('brightVal'),
+    contrast:     document.getElementById('contrastVal'),
+    saturation:   document.getElementById('satVal'),
+    maxColors:    document.getElementById('maxcolVal'),
+    minLength:    document.getElementById('lenVal'),
+    alphamax:     document.getElementById('alphaVal'),
     opttolerance: document.getElementById('tolVal')
   };
 
@@ -150,19 +154,20 @@
   document.getElementById('presetSmooth').onclick = () => applyPreset('smooth');
 
   function applyPreset(type) {
-    if (type === 'sharp') {
-      Object.assign({threshold:100, blur:1.0, brightness:110, contrast:140, saturation:60, maxColors:256, minLength:2,
-        alphamax:0.0, opttolerance:0.05, opticurve:false, turnPolicy:'minority'});
-    } else {
-      Object.assign({threshold:80, blur:2.5, brightness:90, contrast:110, saturation:100, maxColors:256, minLength:8,
-        alphamax:1.0, opttolerance:0.2, opticurve:true, turnPolicy:'majority'});
-    }
-    ['threshold','blur','brightness','contrast','saturation','maxColors','minLength','alphamax','opttolerance'].forEach(k => {
-      const el = document.getElementById(k);
-      if (el) el.value = arguments[0][k] ?? el.value;
-    });
-    document.getElementById('opticurve').checked = (type === 'smooth');
-    document.getElementById('turnPolicy').value = (type === 'sharp') ? 'minority' : 'majority';
+    const isSharp = type === 'sharp';
+    document.getElementById('threshold').value   = isSharp ? 100 : 80;
+    document.getElementById('blur').value        = isSharp ? 1.0 : 2.5;
+    document.getElementById('brightness').value  = isSharp ? 110 : 90;
+    document.getElementById('contrast').value    = isSharp ? 140 : 110;
+    document.getElementById('saturation').value  = isSharp ? 60  : 100;
+    document.getElementById('maxColors').value   = 256;
+    document.getElementById('minLength').value   = isSharp ? 2 : 8;
+    document.getElementById('alphamax').value    = isSharp ? 0.0 : 1.0;
+    document.getElementById('opttolerance').value= isSharp ? 0.05 : 0.2;
+    document.getElementById('opticurve').checked = !isSharp;
+    document.getElementById('turnPolicy').value  = isSharp ? 'minority' : 'majority';
+    document.getElementById('blackonwhite').checked = true;
+
     Object.keys(displays).forEach(k => {
       const v = document.getElementById(k)?.value ?? '—';
       displays[k].textContent = (k === 'alphamax' || k === 'opttolerance') ? Number(v).toFixed(2) : v;
@@ -185,7 +190,7 @@
         const maxDim = 900;
         if (w > maxDim || h > maxDim) {
           if (w > h) { h = Math.round(maxDim * h / w); w = maxDim; }
-          else { w = Math.round(maxDim * w / h); h = maxDim; }
+          else       { w = Math.round(maxDim * w / h); h = maxDim; }
         }
         canvas.width = w; canvas.height = h;
         redrawPreview();
@@ -209,7 +214,7 @@
 
     let filter = '';
     if (blurPx > 0)      filter += `blur(${blurPx}px) `;
-    if (brightPct !== 100)  filter += `brightness(${brightPct}%) `;
+    if (brightPct !== 100) filter += `brightness(${brightPct}%) `;
     if (contrastPct !== 100) filter += `contrast(${contrastPct}%) `;
     if (satPct !== 100)  filter += `saturate(${satPct}%) `;
 
@@ -225,17 +230,18 @@
     status.textContent = 'Preprocessing & tracing…';
     status.className = 'status';
 
+    // Draw original
     ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
 
+    // Apply color/brightness adjustments
     const blurPx      = parseFloat(document.getElementById('blur').value);
     const brightPct   = parseFloat(document.getElementById('brightness').value);
     const contrastPct = parseFloat(document.getElementById('contrast').value);
     const satPct      = parseFloat(document.getElementById('saturation').value);
-    const maxCols     = parseInt(document.getElementById('maxColors').value);
 
     let filter = '';
     if (blurPx > 0)      filter += `blur(${blurPx}px) `;
-    if (brightPct !== 100)  filter += `brightness(${brightPct}%) `;
+    if (brightPct !== 100) filter += `brightness(${brightPct}%) `;
     if (contrastPct !== 100) filter += `contrast(${contrastPct}%) `;
     if (satPct !== 100)  filter += `saturate(${satPct}%) `;
 
@@ -245,11 +251,20 @@
       ctx.filter = 'none';
     }
 
+    // Invert if user wants WHITE foreground (black background)
+    const wantWhiteForeground = !document.getElementById('blackonwhite').checked;
+    if (wantWhiteForeground) {
+      ctx.filter = 'invert(1)';
+      ctx.drawImage(canvas, 0, 0);
+      ctx.filter = 'none';
+    }
+
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
     try {
+      const maxCols = parseInt(document.getElementById('maxColors').value);
       if (maxCols < 256) {
-        status.textContent = `Warning: Max colors set to ${maxCols}, but library only does black & white tracing.`;
+        status.textContent = `Note: Max colors = ${maxCols} (library only supports black & white tracing)`;
         status.className = 'status warning';
       }
 
@@ -260,12 +275,14 @@
         opticurve:    document.getElementById('opticurve').checked,
         opttolerance: parseFloat(document.getElementById('opttolerance').value),
         threshold:    parseInt(document.getElementById('threshold').value) / 255,
-        blackonwhite: document.getElementById('blackonwhite').checked,
+        // blackonwhite is NOT passed — we handle inversion manually
       };
 
       const svg = await potrace(imageData, params);
 
-      if (!svg || svg.length < 300) throw new Error('Weak result – try different preprocessing');
+      if (!svg || svg.length < 300) {
+        throw new Error('Weak/empty result — try different threshold or more contrast');
+      }
 
       svgContainer.innerHTML = svg;
 
@@ -280,15 +297,17 @@
         URL.revokeObjectURL(url);
       };
 
-      status.textContent = 'Done ✓';
+      status.textContent = 'Tracing complete ✓';
       status.className = 'status success';
       if (!params.opticurve) status.textContent += ' (polygon mode)';
     } catch (err) {
       console.error(err);
-      status.textContent = 'Error: ' + (err.message || 'Failed');
+      status.textContent = 'Error: ' + (err.message || 'Tracing failed');
       status.className = 'status error';
+      svgContainer.innerHTML = '<p style="color:#f66">Failed — try adjusting threshold, contrast or inversion setting.</p>';
     }
   };
 </script>
+
 </body>
 </html>

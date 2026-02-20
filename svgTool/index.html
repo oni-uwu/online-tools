@@ -3,54 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PNG → SVG Tracer (Fixed 2026 - Detailed Controls)</title>
+  <title>PNG → SVG Tracer (2026 - More Controls)</title>
   <style>
-    body {
-      font-family: system-ui, sans-serif;
-      background: #0f0f15;
-      color: #e0e0ff;
-      padding: 20px;
-      max-width: 1100px;
-      margin: 0 auto;
-    }
+    body { font-family: system-ui, sans-serif; background: #0f0f15; color: #e0e0ff; padding: 20px; max-width: 1100px; margin: 0 auto; }
     h1 { color: #a5b4fc; }
-    .container {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
-      margin: 24px 0;
-    }
-    .panel {
-      background: #1a1a2e;
-      padding: 20px;
-      border-radius: 12px;
-      border: 1px solid #333366;
-    }
-    canvas, svg, #svgContainer {
-      max-width: 100%;
-      height: auto;
-      background: #00000022;
-      border: 1px solid #444;
-      border-radius: 6px;
-      min-height: 200px;
-    }
-    .controls {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 16px;
-      margin: 16px 0;
-    }
-    button {
-      padding: 10px 18px;
-      background: #6366f1;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 1rem;
-    }
+    .container { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 24px 0; }
+    .panel { background: #1a1a2e; padding: 20px; border-radius: 12px; border: 1px solid #333366; }
+    canvas, svg, #svgContainer { max-width: 100%; height: auto; background: #00000022; border: 1px solid #444; border-radius: 6px; min-height: 200px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+    button { padding: 10px 18px; background: #6366f1; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; }
     button:hover:not(:disabled) { background: #818cf8; }
     button:disabled { opacity: 0.5; cursor: not-allowed; background: #444; }
+    .preset-btn { background: #4f46e5; }
     label { display: block; margin: 12px 0 4px; }
     input[type=range] { width: 180px; }
     input[type=checkbox] { margin-right: 8px; }
@@ -61,61 +25,62 @@
 </head>
 <body>
 
-<h1>PNG → SVG Tracer (with detailed controls)</h1>
+<h1>PNG → SVG Tracer (more parameters)</h1>
 
 <div class="container">
   <div class="panel">
     <h2>1. Load Image</h2>
     <input type="file" id="fileInput" accept="image/png,image/jpeg,image/bmp" />
-    <p class="info">Best results: high-contrast logos, icons, line art, black shapes on white background.<br>Avoid photos unless very clean / posterized.</p>
+    <p class="info">Best: high-contrast logos, icons, line art.<br>Photos usually need heavy posterization (not supported yet).</p>
 
-    <h3>Preview (resized to fit)</h3>
+    <h3>Preview</h3>
     <canvas id="canvas" width="500" height="500"></canvas>
   </div>
 
   <div class="panel">
-    <h2>2. Trace Settings & Result</h2>
+    <h2>2. Trace Settings</h2>
 
     <div class="controls">
       <button id="traceBtn" disabled>Convert to SVG</button>
       <button id="downloadBtn" disabled>Download SVG</button>
+      <button class="preset-btn" id="presetSharp">Sharp / Detailed Preset</button>
+      <button class="preset-btn" id="presetSmooth">Smooth Logo Preset</button>
     </div>
 
     <div id="status" class="status"></div>
 
-    <label>Threshold (lower = more black): <span id="threshVal">90</span></label>
+    <label>Threshold: <span id="threshVal">90</span></label>
     <input type="range" id="threshold" min="10" max="240" value="90" step="5" />
 
-    <label>Blur (noise reduction): <span id="blurVal">2.0</span> px</label>
+    <label>Blur (px): <span id="blurVal">2.0</span></label>
     <input type="range" id="blur" min="0" max="8" value="2.0" step="0.5" />
 
-    <label>Min path length (ignore tiny bits): <span id="lenVal">5</span> px</label>
-    <input type="range" id="minLength" min="1" max="40" value="5" step="1" />
+    <label>Min path length (px): <span id="lenVal">4</span></label>
+    <input type="range" id="minLength" min="1" max="40" value="4" step="1" />
 
-    <label>Corner sharpness (0 = sharp, 1.33 = round): <span id="alphaVal">1.00</span></label>
-    <input type="range" id="alphamax" min="0" max="1.333" value="1.0" step="0.05" />
+    <label>Corner sharpness: <span id="alphaVal">0.00</span> (0 = sharp)</label>
+    <input type="range" id="alphamax" min="0" max="1.333" value="0.0" step="0.05" />
 
-    <label>Curve tolerance (lower = more detail): <span id="tolVal">0.20</span></label>
-    <input type="range" id="opttolerance" min="0.01" max="2" value="0.2" step="0.05" />
+    <label>Curve tolerance: <span id="tolVal">0.10</span> (lower = more detail)</label>
+    <input type="range" id="opttolerance" min="0.01" max="2" value="0.1" step="0.05" />
 
-    <label>
-      <input type="checkbox" id="opticurve" checked />
-      Fit smooth Bézier curves (uncheck = more detail, polygon style)
-    </label>
+    <label><input type="checkbox" id="opticurve" checked /> Fit smooth curves (uncheck = max detail / polygons)</label>
+
+    <label><input type="checkbox" id="blackonwhite" checked /> Black is foreground (uncheck for white-on-black art)</label>
 
     <label>Turn policy:
       <select id="turnPolicy">
-        <option value="black">black (default)</option>
+        <option value="black">black</option>
         <option value="white">white</option>
         <option value="left">left</option>
         <option value="right">right</option>
-        <option value="majority">majority</option>
+        <option value="majority" selected>majority</option>
         <option value="minority">minority</option>
       </select>
     </label>
 
-    <h3>Result (SVG preview)</h3>
-    <div id="svgContainer">Nothing yet — load image & convert</div>
+    <h3>Result</h3>
+    <div id="svgContainer">Load image & convert…</div>
   </div>
 </div>
 
@@ -123,13 +88,13 @@
   import { potrace, init as initPotrace } from 'https://cdn.jsdelivr.net/npm/esm-potrace-wasm@latest/+esm';
 
   const status = document.getElementById('status');
-  status.textContent = 'Loading Potrace WASM...';
+  status.textContent = 'Loading Potrace…';
   try {
     await initPotrace();
-    status.textContent = 'Potrace ready ✓';
+    status.textContent = 'Ready ✓';
     status.className = 'status success';
   } catch (e) {
-    status.textContent = 'Failed to load Potrace: ' + e.message;
+    status.textContent = 'Load failed: ' + e.message;
     status.className = 'status error';
     console.error(e);
   }
@@ -143,18 +108,49 @@
 
   let originalImage = null;
 
-  // Live value display
-  document.getElementById('threshold').oninput = e => document.getElementById('threshVal').textContent = e.target.value;
-  document.getElementById('blur').oninput     = e => document.getElementById('blurVal').textContent   = e.target.value;
-  document.getElementById('minLength').oninput = e => document.getElementById('lenVal').textContent   = e.target.value;
-  document.getElementById('alphamax').oninput  = e => document.getElementById('alphaVal').textContent  = Number(e.target.value).toFixed(2);
-  document.getElementById('opttolerance').oninput = e => document.getElementById('tolVal').textContent = Number(e.target.value).toFixed(2);
+  // Value displays
+  const displays = {
+    threshold:   document.getElementById('threshVal'),
+    blur:        document.getElementById('blurVal'),
+    minLength:   document.getElementById('lenVal'),
+    alphamax:    document.getElementById('alphaVal'),
+    opttolerance: document.getElementById('tolVal')
+  };
+  Object.keys(displays).forEach(key => {
+    const el = document.getElementById(key);
+    if (el) el.oninput = e => displays[key].textContent = Number(e.target.value).toFixed(key === 'alphamax' || key === 'opttolerance' ? 2 : 0);
+  });
+
+  // Presets
+  document.getElementById('presetSharp').onclick = () => applyPreset('sharp');
+  document.getElementById('presetSmooth').onclick = () => applyPreset('smooth');
+
+  function applyPreset(type) {
+    if (type === 'sharp') {
+      document.getElementById('threshold').value = 100;
+      document.getElementById('blur').value = 1.0;
+      document.getElementById('minLength').value = 2;
+      document.getElementById('alphamax').value = 0.0;
+      document.getElementById('opttolerance').value = 0.05;
+      document.getElementById('opticurve').checked = false;
+      document.getElementById('turnPolicy').value = 'minority';
+    } else { // smooth
+      document.getElementById('threshold').value = 80;
+      document.getElementById('blur').value = 2.5;
+      document.getElementById('minLength').value = 8;
+      document.getElementById('alphamax').value = 1.0;
+      document.getElementById('opttolerance').value = 0.2;
+      document.getElementById('opticurve').checked = true;
+      document.getElementById('turnPolicy').value = 'majority';
+    }
+    // Trigger display update
+    Object.values(displays).forEach(d => d.textContent = Number(document.getElementById(d.parentElement.previousElementSibling?.id || d.id.replace('Val','')).value).toFixed(2));
+  }
 
   fileInput.onchange = e => {
     const file = e.target.files[0];
     if (!file) return;
-
-    status.textContent = 'Image loaded — ready to trace';
+    status.textContent = 'Image loaded';
     status.className = 'status';
 
     const reader = new FileReader();
@@ -162,20 +158,17 @@
       const img = new Image();
       img.onload = () => {
         originalImage = img;
-
         let w = img.width, h = img.height;
-        const max = 800;
-        if (w > max || h > max) {
-          if (w > h) { h = Math.round(max * h / w); w = max; }
-          else       { w = Math.round(max * w / h); h = max; }
+        const maxDim = 900;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) { h = Math.round(maxDim * h / w); w = maxDim; }
+          else { w = Math.round(maxDim * w / h); h = maxDim; }
         }
-
         canvas.width = w; canvas.height = h;
         ctx.drawImage(img, 0, 0, w, h);
-
         traceBtn.disabled = false;
         downloadBtn.disabled = true;
-        svgContainer.innerHTML = 'Ready — click Convert to SVG';
+        svgContainer.innerHTML = 'Ready — press Convert';
       };
       img.src = ev.target.result;
     };
@@ -184,14 +177,11 @@
 
   traceBtn.onclick = async () => {
     if (!originalImage) return;
-
-    status.textContent = 'Tracing... (may take a few seconds)';
+    status.textContent = 'Tracing…';
     status.className = 'status';
 
-    // Redraw original
     ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
 
-    // Apply blur if requested
     const blurPx = parseFloat(document.getElementById('blur').value);
     if (blurPx > 0) {
       ctx.filter = `blur(${blurPx}px)`;
@@ -209,22 +199,20 @@
         opticurve:    document.getElementById('opticurve').checked,
         opttolerance: parseFloat(document.getElementById('opttolerance').value),
         threshold:    parseInt(document.getElementById('threshold').value) / 255,
-        blackonwhite: true,
+        blackonwhite: document.getElementById('blackonwhite').checked,
       };
 
-      console.log('Tracing with params:', params);
+      console.log('Params:', params);
 
       const svg = await potrace(imageData, params);
 
-      if (!svg || svg.length < 200) {
-        throw new Error('No meaningful paths found (empty/near-empty SVG)');
-      }
+      if (!svg || svg.length < 300) throw new Error('Empty result – try different threshold');
 
       svgContainer.innerHTML = svg;
 
       downloadBtn.disabled = false;
       downloadBtn.onclick = () => {
-        const blob = new Blob([svg], { type: 'image/svg+xml' });
+        const blob = new Blob([svg], {type: 'image/svg+xml'});
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -233,20 +221,16 @@
         URL.revokeObjectURL(url);
       };
 
-      status.textContent = 'Tracing complete ✓';
+      status.textContent = 'Done ✓';
       status.className = 'status success';
-
-      if (!params.opticurve) {
-        status.textContent += '  (polygon mode – more detail, usually larger file)';
-      }
+      if (!params.opticurve) status.textContent += ' (polygon mode)';
     } catch (err) {
       console.error(err);
-      status.textContent = 'Error: ' + (err.message || 'Tracing failed');
+      status.textContent = 'Error: ' + (err.message || 'Failed');
       status.className = 'status error';
-      svgContainer.innerHTML = '<p style="color:#f66">Failed — see status. Try different threshold, lower blur, or sharper settings.</p>';
+      svgContainer.innerHTML = '<p style="color:#f66">Failed. Try adjusting threshold, blur, or turn policy.</p>';
     }
   };
 </script>
-
 </body>
 </html>
